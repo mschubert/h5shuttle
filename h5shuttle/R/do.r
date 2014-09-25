@@ -37,30 +37,22 @@
 h5s_save = function(X, file) {
     library(rhdf5)
     node2group = function(file, path, node) {
-        for (i in seq_along(node)) {
-            nval = node[[i]]
-            npath = .jp(path, names(node)[i])
-            h5createGroup(file, npath)
+        if (is.list(node) && !is.data.frame(node)) {
+            h5createGroup(file, path)
+            for (j in seq_along(node))
+                node2group(file, .jp(path, names(node)[j]), node[j])
+        } else {
+            if (is.data.frame(node))
+                node = .cleandf(node)
 
-            if (is.list(nval) && !is.data.frame(nval)) {
-                for (j in seq_along(nval))
-                    node2group(file, npath, nval[j])
-            } else {
-                if (is.data.frame(nval))
-                    nval = .cleandf(nval)
+            h5write(node, file, .jp(path, "value"))
 
-                h5write(nval, file, .jp(npath,"value"))
-
-                dn = .dimnames(nval)
-                for (j in 1:length(dn))
-                   if (!is.null(dn[[j]]))
-                       h5write(dn[[j]], file, .jp(npath,paste0("names_",j)))
-            }
+            dn = .dimnames(node)
+            for (j in 1:length(dn))
+               if (!is.null(dn[[j]]))
+                   h5write(dn[[j]], file, .jp(path, paste0("names_", j)))
         }
     }
-
-    if (!is.list(X) || is.data.frame(X))
-        X = list(root=X)
 
     h5createFile(file)
     node2group(file, "", X)
