@@ -9,8 +9,33 @@
 
 .jp = function(...) paste(..., sep="/")
 
+.cleandf = function(df) {
+    df = c(as.list(df), list(stringsAsFactors=F, row.names = rownames(df)))
+
+    do.call(data.frame, lapply(df, function(x) {
+        ulx = unlist(x)
+        if (is.factor(ulx))
+            as.character(ulx)
+        else
+            ulx
+    }))
+}
+
+.dimnames = function(X) {
+    if (is.matrix(X) || is.data.frame(X))
+        list(rownames(X), colnames(X))
+    else if (is.vector(X))
+        names(X)
+    else {
+        if (is.null(dimnames(X)))
+            rep(list(NULL), length(dim(X)))
+        else
+            dimnames(X)
+    }
+}
+
 h5s_save = function(X, file) {
-library(rhdf5)
+    library(rhdf5)
     node2group = function(file, path, node) {
         for (i in seq_along(node)) {
             nval = node[[i]]
@@ -21,25 +46,28 @@ library(rhdf5)
                 for (j in seq_along(nval))
                     node2group(file, npath, nval[j])
             } else {
+                if (is.data.frame(nval))
+                    nval = .cleandf(nval)
+
                 h5write(nval, file, .jp(npath,"value"))
 
-                if (is.data.frame(nval))
-                    nval = as.matrix(nval)
-
-                nval = as.array(nval)
-                for (j in 1:length(dim(nval)))
-                   if (!is.null(dimnames(nval)[[j]]))
-                       h5write(dimnames(nval)[[j]], file, .jp(npath,paste0("names_",j)))
+                dn = .dimnames(nval)
+                for (j in 1:length(dn))
+                   if (!is.null(dn[[j]]))
+                       h5write(dn[[j]], file, .jp(npath,paste0("names_",j)))
             }
         }
     }
+
+    if (!is.list(X) || is.data.frame(X))
+        X = list(root=X)
 
     h5createFile(file)
     node2group(file, "", X)
 }
 
 h5s_load = function(file, path="/") {
-library(rhdf5)
+    library(rhdf5)
     group2node = function(node) {
         if (is.null(node$value))
             lapply(node, group2node)
