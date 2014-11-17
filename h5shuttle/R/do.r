@@ -7,7 +7,7 @@
 #d = setNames(3, LETTERS[5])
 #nodes = list(a=a, b=list(c=c, d=d))
 
-.jp = function(...) paste(..., sep="/")
+.jp = function(...) gsub("//", "/", paste(..., sep="/"))
 
 .cleandf = function(df) {
     df = c(as.list(df), list(stringsAsFactors=F, row.names = rownames(df)))
@@ -22,16 +22,14 @@
 }
 
 .dimnames = function(X) {
-    if (is.matrix(X) || is.data.frame(X))
+    if (is.data.frame(X))
         list(rownames(X), colnames(X))
     else if (is.vector(X))
         names(X)
-    else {
-        if (is.null(dimnames(X)))
-            rep(list(NULL), length(dim(X)))
-        else
-            dimnames(X)
-    }
+    else if (is.null(dimnames(X)))
+        rep(list(NULL), length(dim(X)))
+    else
+        dimnames(X)
 }
 
 h5s_save = function(X, file) {
@@ -58,20 +56,44 @@ h5s_save = function(X, file) {
     node2group(file, "", X)
 }
 
-h5s_load = function(file, path="/") {
+h5s_load = function(file, path="/", index=NULL) {
     library(rhdf5)
-    group2node = function(node) {
-        if (is.null(node$value))
-            lapply(node, group2node)
-        else if (is.null(dim(node$value)))
-            setNames(node$value, node$names_1)
-        else {
-            nidx = sapply(1:length(dim(node$value)),
-                          function(i) paste0("names_", i))
-            dimnames(node$value) = unname(node[nidx])
-            node$value
+    group2node = function(path, index=NULL) {
+        if ('value' %in% file_ls$name[file_ls$group==path]) {
+            if (is.character(index)) {
+                names_1 = h5read(file, .jp(path, 'names_1'))
+                index = match(index, names_1)
+            }
+
+            # check index: no NAs, dimension should be right
+            # (maybe rhdf5 error checking is good enough though)
+
+            value = h5read(file, .jp(path, 'value'), index=index)
+            name_i = function(i) {
+                name = paste0("names_", i)
+                if (name %in% file_ls$name[file_ls$group==path])
+                    h5read(file, .jp(path, name))
+                else
+                    NULL
+            }
+
+            dim_names = lapply(1:length(dim(value)), name_i)
+            if (length(dim_names) == 1)
+                setNames(value, dim_names[[1]])
+            else {
+                dimnames(value) = dim_names
+                value
+            }
+
+        } else {
+            name = file_ls$name[file_ls$group==path]
+            paths = sapply(name, function(s) .jp(path, s))
+
+            setNames(lapply(seq_along(paths), function(i)
+                            group2node(paths[i], index)), name)
         }
     }
-    group2node(h5read(file, path))
-}
 
+    file_ls = h5ls(file)
+    group2node(path, index)
+}
