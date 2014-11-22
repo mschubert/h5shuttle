@@ -33,7 +33,7 @@
         dimnames(X)
 }
 
-.names = function(X, value) {
+`.names<-` = function(X, value) {
     if (is.data.frame(X)) {
         rownames(X) = value[1][[1]]
         colnames(X) = value[2][[1]]
@@ -41,6 +41,7 @@
         names(X) = value[[1]]
     else
         dimnames(X) = value
+    X
 }
 
 .setNames = function(X, value) {
@@ -83,43 +84,35 @@ h5save = function(X, file) {
 }
 
 h5load = function(file, path="/", index=NULL) {
-    group2node = function(path, index=NULL) {
+    group2node = function(path, index) {
         # get all objects in the current path
         objs = file_ls$name[file_ls$group==path]
 
         if ('value' %in% objs) {
             # read all dimnames
             dims = .h5dim(file, .jp(path, "value"))
-            dim_names = lapply(seq_along(dims), function(i) {
+            length(index) = length(dims)
+            dim_names = rep(list(NULL), length(index))
+
+            for (i in seq_along(index)) {
                 name_i = paste0("names_", i)
-                if (name_i %in% objs)
-                    rhdf5::h5read(file, .jp(path, name_i))
-            })
 
-            # convert character index to numerical
-            length(index) = length(dim_names)
-            num_idx = mapply(function(idx, name) {
-                if (is.character(idx))
-                    match(idx, name)
-                else
-                    idx
-            }, index, dim_names)
-            
+                if (is.character(index[[i]])) {
+                    dim_names[[i]] = rhdf5::h5read(file, .jp(path, name_i), index=index[i])
+                    index[[i]] = match(index[[i]], dim_names[[i]])
+
+                } else {
+                    if (name_i %in% objs)
+                        dim_names[[i]] = rhdf5::h5read(file, .jp(path, name_i))
+                    if (!is.null(index[[i]]))
+                        dim_names[[i]] = dim_names[[i]][index[[i]]]
+                }
+            }
+
             # load value object w/ numerical index
-            value = rhdf5::h5read(file, .jp(path, 'value'), index=num_idx)
+            value = rhdf5::h5read(file, .jp(path, 'value'), index=index)
 
-            # subset names, return object with names
-            set_names = mapply(function(idx, name) {
-                if (is.null(idx))
-                    name
-                else
-                    name[idx]
-            }, num_idx, dim_names)
-
-            .setNames(value, set_names)
-
-            # check index: no NAs, dimension should be right
-            # (maybe rhdf5 error checking is good enough though)
+            .setNames(value, dim_names)
 
         } else {
             paths = sapply(objs, function(o) .jp(path, o))
@@ -129,7 +122,7 @@ h5load = function(file, path="/", index=NULL) {
         }
     }
 
-    if (!is.null(index) && !is.list(index))
+    if (!is.list(index))
         index = list(index)
 
     file_ls = rhdf5::h5ls(file)
