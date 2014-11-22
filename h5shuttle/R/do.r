@@ -49,7 +49,10 @@
     X
 }
 
-.h5dim = function(file, path) {
+h5dim = function(file, path) {
+#TODO: check if value in path
+# if yes -> .jp(path, 'value')
+# export this function
     loc = rhdf5:::h5checktypeOrOpenLoc(file, readonly=TRUE)
     h5dataset = rhdf5::H5Dopen(loc$H5Identifier, path)
     h5spaceFile = rhdf5::H5Dget_space(h5dataset)
@@ -59,7 +62,42 @@
     dims
 }
 
+h5names = function(file, path, index=NULL, return.index=FALSE) {
+    file_ls = rhdf5::h5ls(file)
+    objs = file_ls$name[file_ls$group==path]
+
+    ndim = length(h5dim(file, .jp(path, 'value')))
+    if (is.null(index))
+        index = list(NULL)
+    length(index) = ndim
+    dim_names = rep(list(NULL), ndim)
+
+    for (i in seq_along(index)) {
+        name_i = paste0("names_", i)
+
+        if (is.character(index[[i]])) {
+            dn = rhdf5::h5read(file, .jp(path, name_i))
+            index[[i]] = match(index[[i]], dn)
+            dim_names[[i]] = dn[index[[i]]]
+
+        } else {
+            if (name_i %in% objs)
+                dim_names[[i]] = rhdf5::h5read(file, .jp(path, name_i), index=index[i])
+        }
+    }
+
+    rhdf5::H5close()
+
+    if (return.index)
+        list(dim_names=dim_names, index=index)
+    else
+        dim_names
+}
+
 h5save = function(X, file) {
+#FIXME: Error in UseMethod("h5write") : 
+#  no applicable method for 'h5write' applied to an object of class "c('matrix', 'double', 'numeric')"
+
     node2group = function(file, path, node) {
         if (is.list(node) && !is.data.frame(node)) {
             rhdf5::h5createGroup(file, path)
@@ -89,30 +127,10 @@ h5load = function(file, path="/", index=NULL) {
         objs = file_ls$name[file_ls$group==path]
 
         if ('value' %in% objs) {
-            # read all dimnames
-            dims = .h5dim(file, .jp(path, "value"))
-            length(index) = length(dims)
-            dim_names = rep(list(NULL), length(index))
-
-            for (i in seq_along(index)) {
-                name_i = paste0("names_", i)
-
-                if (is.character(index[[i]])) {
-                    dim_names[[i]] = rhdf5::h5read(file, .jp(path, name_i), index=index[i])
-                    index[[i]] = match(index[[i]], dim_names[[i]])
-
-                } else {
-                    if (name_i %in% objs)
-                        dim_names[[i]] = rhdf5::h5read(file, .jp(path, name_i))
-                    if (!is.null(index[[i]]))
-                        dim_names[[i]] = dim_names[[i]][index[[i]]]
-                }
-            }
-
-            # load value object w/ numerical index
-            value = rhdf5::h5read(file, .jp(path, 'value'), index=index)
-
-            .setNames(value, dim_names)
+            # construct object with 'value' and 'names_*'
+            dn = h5names(file, path, index, return.index=TRUE)
+            value = rhdf5::h5read(file, .jp(path, 'value'), index=dn$index)
+            .setNames(value, dn$dim_names)
 
         } else {
             paths = sapply(objs, function(o) .jp(path, o))
