@@ -95,14 +95,13 @@ h5names = function(file, path, index=NULL, return.index=FALSE) {
 }
 
 h5save = function(X, file) {
-#FIXME: Error in UseMethod("h5write") : 
-#  no applicable method for 'h5write' applied to an object of class "c('matrix', 'double', 'numeric')"
-
     node2group = function(file, path, node) {
-        if (is.list(node) && !is.data.frame(node)) {
+        if (path != "/")
             rhdf5::h5createGroup(file, path)
+
+        if (is.list(node) && !is.data.frame(node)) {
             for (j in seq_along(node))
-                node2group(file, .jp(path, names(node)[j]), node[j])
+                node2group(file, .jp(path, names(node)[j]), node[[j]])
         } else {
             if (is.data.frame(node))
                 node = .cleandf(node)
@@ -117,8 +116,8 @@ h5save = function(X, file) {
     }
 
     rhdf5::h5createFile(file)
-    node2group(file, "", X)
-    rhdf5::H5close(file)
+    node2group(file, "/", X)
+    rhdf5::H5close()
 }
 
 h5load = function(file, path="/", index=NULL) {
