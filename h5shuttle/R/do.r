@@ -106,7 +106,7 @@ h5save = function(X, file) {
             if (is.data.frame(node))
                 node = .cleandf(node)
 
-            rhdf5::h5write(node, file, .jp(path, "value"))
+            rhdf5::h5write(node, file, .jp(path, "value"), level=0)
 
             dn = .names(node)
             for (j in 1:length(dn))
